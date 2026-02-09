@@ -1,0 +1,89 @@
+services:
+  app:
+    image: jc21/nginx-proxy-manager:latest
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+      - target: 81
+        published: 81
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
+    networks:
+      - npm-internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+  stats:
+    image: justsky/goaccess-for-nginxproxymanager:latest
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      SKIP_ARCHIVED_LOGS: "${SKIP_ARCHIVED_LOGS}"
+      BASIC_AUTH: "${BASIC_AUTH}"
+      BASIC_AUTH_USERNAME: ${BASIC_AUTH_USERNAME}
+      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD}
+    ports:
+      - target: 7880
+        published: 7880
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - npm-logs:/opt/log:ro
+    networks:
+      - npm-internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+volumes:
+  npm-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=4,soft"
+      device: ":/mnt/user/swarm-data/npm/data"
+
+  npm-letsencrypt:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=4,soft"
+      device: ":/mnt/user/swarm-data/npm/letsencrypt"
+
+  npm-logs:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,ro,nfsvers=4,soft"
+      device: ":/mnt/user/swarm-data/npm/data/logs"
+
+networks:
+  npm-internal:
+    driver: overlay
