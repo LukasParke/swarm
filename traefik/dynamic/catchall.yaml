@@ -1,0 +1,33 @@
+# Catch-all routers: forward unmatched traffic to Dokploy (10.10.10.54)
+
+# TCP passthrough for HTTPS -- Dokploy handles its own TLS
+tcp:
+  routers:
+    catchall:
+      entryPoints:
+        - websecure
+      rule: "HostSNI(`*`)"
+      service: dokploy
+      priority: 1
+      tls:
+        passthrough: true
+  services:
+    dokploy:
+      loadBalancer:
+        servers:
+          - address: "10.10.10.54:443"
+
+# HTTP catch-all for port 80 -- forward to Dokploy plain HTTP
+http:
+  routers:
+    catchall-http:
+      entryPoints:
+        - web
+      rule: "PathPrefix(`/`)"
+      service: dokploy-http
+      priority: 1
+  services:
+    dokploy-http:
+      loadBalancer:
+        servers:
+          - url: "http://10.10.10.54:80"

@@ -1,0 +1,185 @@
+services:
+  init:
+    image: alpine:latest
+    command: >
+      sh -c "
+        mkdir -p /nfs/traefik/certs &&
+        mkdir -p /nfs/traefik/dynamic &&
+        echo 'Directories created successfully'
+      "
+    volumes:
+      - nfs-root:/nfs
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  traefik:
+    image: traefik:v3.6
+
+    networks:
+    # Connect to the 'traefik_proxy' overlay network for inter-container communication across nodes
+      - traefik_proxy
+
+    ports:
+        # Expose Traefik's entry points to the Swarm
+        # Swarm requires the long syntax for ports.
+      - target: 80 # Container port (Traefik web entry point)
+        published: 80 # Host port exposed on the nodes
+        protocol: tcp
+        # 'host' mode binds directly to the node's IP where the task runs.
+        # 'ingress' mode uses Swarm's Routing Mesh (load balances across nodes).
+        # Choose based on your load balancing strategy. 'host' is often simpler if using an external LB.
+        mode: host
+      - target: 443 # Container port ( Traefik websecure entry point)
+        published: 443 # Host port
+        protocol: tcp
+        mode: host
+
+    volumes:
+      # Mount the Docker socket for the Swarm provider
+      # This MUST be run from a manager node to access the Swarm API via the socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # Swarm API socket
+      - traefik-certs:/certs:ro
+      - traefik-dynamic:/dynamic:ro
+
+    # Traefik Static configuration via command-line arguments
+    command:
+      # HTTP EntryPoint (no global redirect -- handled per-router via middleware)
+      - "--entrypoints.web.address=:80"
+
+      # HTTPS EntryPoint (no global TLS -- set per-router to allow TCP passthrough)
+      - "--entrypoints.websecure.address=:443"
+
+      # Dynamic configuration directory (TLS certs, catch-all routers, etc.)
+      - "--providers.file.directory=/dynamic"
+      - "--providers.file.watch=true"
+
+      # Providers
+
+      # Enable the Docker Swarm provider (instead of Docker provider)
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
+
+      # Watch for Swarm service changes (requires socket access)
+      - "--providers.swarm.watch=true"
+
+      # Recommended: Don't expose services by default; require explicit labels
+      - "--providers.swarm.exposedbydefault=false"
+
+      # Specify the default network for Traefik to connect to services
+      - "--providers.swarm.network=traefik_traefik_proxy"
+
+      # API & Dashboard
+      - "--api.dashboard=true" # Enable the dashboard
+      - "--api.insecure=false" # Explicitly disable insecure API mod
+
+      # Observability
+      - "--log.level=INFO" # Set the Log Level e.g INFO, DEBUG
+      - "--accesslog=true" # Enable Access Logs
+      - "--metrics.prometheus=true"  # Enable Prometheus
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        # Pin to a specific node for host-mode port binding
+        constraints:
+          - node.hostname == zeus
+
+      # Traefik Dynamic configuration via labels
+      # In Swarm, labels on the service definition configure Traefik routing for that service.
+      labels:
+        - "traefik.enable=true"
+
+        # HTTP->HTTPS redirect middleware (shared by all swarm services)
+        - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+        - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+
+        # Dashboard HTTPS router
+        - "traefik.http.routers.dashboard.rule=Host(`traefik.parke.dev`)"
+        - "traefik.http.routers.dashboard.entrypoints=websecure"
+        - "traefik.http.routers.dashboard.service=api@internal"
+        - "traefik.http.routers.dashboard.tls=true"
+
+        # Dashboard HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.dashboard-http.rule=Host(`traefik.parke.dev`)"
+        - "traefik.http.routers.dashboard-http.entrypoints=web"
+        - "traefik.http.routers.dashboard-http.middlewares=https-redirect@swarm"
+        - "traefik.http.routers.dashboard-http.service=api@internal"
+
+        # Basic‑auth middleware
+        - "traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$apr1$$GFRel7DL$$7w1/3sEC7ly.akaM62pD01"
+        - "traefik.http.routers.dashboard.middlewares=dashboard-auth@swarm"
+
+        # Service hint
+        - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+  # Deploy the Whoami application
+  whoami:
+    image: traefik/whoami
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        # Enable Service discovery for Traefik
+        - "traefik.enable=true"
+        # Whoami HTTPS router
+        - "traefik.http.routers.whoami.rule=Host(`whoami.parke.dev`)"
+        - "traefik.http.routers.whoami.entrypoints=websecure"
+        - "traefik.http.routers.whoami.tls=true"
+        # Whoami HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.whoami-http.rule=Host(`whoami.parke.dev`)"
+        - "traefik.http.routers.whoami-http.entrypoints=web"
+        - "traefik.http.routers.whoami-http.middlewares=https-redirect@swarm"
+        # Expose the whoami port number to Traefik
+        - "traefik.http.services.whoami.loadbalancer.server.port=80"
+
+volumes:
+  nfs-root:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
+
+  traefik-certs:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/traefik/certs"
+
+  traefik-dynamic:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/traefik/dynamic"
+
+# Define the overlay network for Swarm
+networks:
+  traefik_proxy:
+    driver: overlay
+    attachable: true

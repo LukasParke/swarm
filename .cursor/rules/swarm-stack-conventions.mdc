@@ -6,6 +6,36 @@ alwaysApply: false
 
 # Docker Swarm Stack Conventions
 
+## Reverse Proxy: Traefik
+
+This swarm uses Traefik as the reverse proxy. All swarm services that need HTTP/HTTPS access must be routed through Traefik via labels.
+
+### Exposing a Service via Traefik
+
+Services must join the `traefik_proxy` overlay network and include deploy labels:
+
+```yaml
+networks:
+  - traefik_proxy
+deploy:
+  labels:
+    - "traefik.enable=true"
+    # HTTPS router
+    - "traefik.http.routers.<name>.rule=Host(`<hostname>`)"
+    - "traefik.http.routers.<name>.entrypoints=websecure"
+    - "traefik.http.routers.<name>.tls=true"
+    # HTTP router (redirect to HTTPS)
+    - "traefik.http.routers.<name>-http.rule=Host(`<hostname>`)"
+    - "traefik.http.routers.<name>-http.entrypoints=web"
+    - "traefik.http.routers.<name>-http.middlewares=https-redirect@swarm"
+    # Service port
+    - "traefik.http.services.<name>.loadbalancer.server.port=<port>"
+```
+
+- TLS is set per-router (not globally) to allow TCP passthrough for unknown hosts.
+- HTTP->HTTPS redirect is handled per-router via the shared `https-redirect@swarm` middleware defined on the Traefik service.
+- Unknown/unmatched hosts are forwarded via TCP passthrough to the Dokploy fallback server.
+
 ## NFS Volume Init Service
 
 Every stack that uses NFS volumes must include an `init` service that creates required directories before other services start.
@@ -32,7 +62,25 @@ init:
 
 - Mount the NFS root (`:/mnt/user/swarm-data`) as `nfs-root` and create all subdirectories under it.
 - Use `restart_policy: on-failure` with a limited `max_attempts` so it retries if NFS isn't ready, but stops after success.
-- Other services use `restart_policy: condition: any` so they retry until the init service has created the directories.
+- The init service acts as a safety net for future redeployments when the directories already exist.
+
+### Important: First-Time Deployment
+
+NFS subdirectory volumes must point to paths that **already exist on the NAS** before the stack is deployed. Docker mounts NFS volumes at volume creation time, before any container starts. If the path doesn't exist, the volume enters a failed state and won't retry the mount — only the container restarts, not the volume.
+
+**Before the first deployment of any new stack**, create the required directories on the NAS (`10.10.10.215`):
+
+```bash
+ssh nas 'mkdir -p /mnt/user/swarm-data/<stack-name>/subdir1 /mnt/user/swarm-data/<stack-name>/subdir2'
+```
+
+If a deployment fails due to missing directories:
+
+1. Remove the stack: `docker stack rm <stack-name>`
+2. Wait for cleanup: `sleep 10`
+3. Remove failed volumes: `docker volume rm <stack-name>_<volume-name>` for each volume
+4. Create the directories on the NAS
+5. Redeploy
 
 ## NFS Volume Definition
 
@@ -43,7 +91,7 @@ nfs-root:
   driver: local
   driver_opts:
     type: nfs
-    o: "addr=10.10.10.215,rw,nfsvers=4,soft"
+    o: "addr=10.10.10.215,rw,nfsvers=3,soft"
     device: ":/mnt/user/swarm-data"
 ```
 
