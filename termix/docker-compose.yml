@@ -1,0 +1,69 @@
+services:
+  init:
+    image: alpine:latest
+    command: >
+      sh -c "
+        mkdir -p /nfs/termix/data &&
+        echo 'Directories created successfully'
+      "
+    volumes:
+      - nfs-root:/nfs
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  termix:
+    image: ghcr.io/lukegus/termix:latest
+    environment:
+      PORT: "8080"
+    volumes:
+      - termix-data:/app/data
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.termix.rule=Host(`termix.parke.dev`)"
+        - "traefik.http.routers.termix.entrypoints=websecure"
+        - "traefik.http.routers.termix.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.termix-http.rule=Host(`termix.parke.dev`)"
+        - "traefik.http.routers.termix-http.entrypoints=web"
+        - "traefik.http.routers.termix-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.termix.loadbalancer.server.port=8080"
+
+volumes:
+  nfs-root:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
+
+  termix-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/termix/data"
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy

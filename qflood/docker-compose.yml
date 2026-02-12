@@ -1,0 +1,111 @@
+services:
+  init:
+    image: alpine:latest
+    command: >
+      sh -c "
+        mkdir -p /nfs/qflood/config &&
+        mkdir -p /nfs/qflood/data &&
+        echo 'Directories created successfully'
+      "
+    volumes:
+      - nfs-root:/nfs
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  qflood:
+    image: ghcr.io/engels74/qflood
+    hostname: qflood.internal
+    cap_add:
+      - NET_ADMIN
+    environment:
+      # App settings
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "002"
+      TZ: "Etc/UTC"
+      LIBTORRENT: "v2"
+      FLOOD_AUTH: "true"
+      # VPN settings
+      VPN_ENABLED: "true"
+      VPN_CONF: "wg0"
+      VPN_PROVIDER: "pia"
+      VPN_LAN_NETWORK: "10.10.10.0/24"
+      VPN_LAN_LEAK_ENABLED: "false"
+      VPN_AUTO_PORT_FORWARD: "true"
+      VPN_HEALTHCHECK_ENABLED: "false"
+      VPN_PIA_PORT_FORWARD_PERSIST: "false"
+      PRIVOXY_ENABLED: "false"
+      UNBOUND_ENABLED: "false"
+      # VPN credentials (from .env)
+      VPN_PIA_USER: ${VPN_PIA_USER}
+      VPN_PIA_PASS: ${VPN_PIA_PASS}
+      VPN_PIA_PREFERRED_REGION: ${VPN_PIA_PREFERRED_REGION}
+    volumes:
+      - qflood-config:/config
+      - qflood-data:/data
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: ingress
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: ingress
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        # HTTPS router (Flood UI)
+        - "traefik.http.routers.qflood.rule=Host(`qflood.parke.dev`)"
+        - "traefik.http.routers.qflood.entrypoints=websecure"
+        - "traefik.http.routers.qflood.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.qflood-http.rule=Host(`qflood.parke.dev`)"
+        - "traefik.http.routers.qflood-http.entrypoints=web"
+        - "traefik.http.routers.qflood-http.middlewares=https-redirect@swarm"
+        # Service port (Flood UI)
+        - "traefik.http.services.qflood.loadbalancer.server.port=3000"
+
+volumes:
+  nfs-root:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
+
+  qflood-config:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/qflood/config"
+
+  qflood-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/qflood/data"
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy

@@ -1,0 +1,22 @@
+services:
+  dash:
+    image: mauricenino/dashdot:latest
+    volumes:
+      - /:/mnt/host:ro
+    ports:
+      - target: 3001
+        published: 3021
+        protocol: tcp
+        # host mode so each node's IP:3021 shows that node's stats
+        mode: host
+    deploy:
+      mode: global
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first

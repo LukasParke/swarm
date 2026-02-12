@@ -8,33 +8,52 @@ alwaysApply: false
 
 ## Reverse Proxy: Traefik
 
-This swarm uses Traefik as the reverse proxy. All swarm services that need HTTP/HTTPS access must be routed through Traefik via labels.
+This swarm uses Traefik as the reverse proxy. All swarm services that need HTTP/HTTPS access must be routed through Traefik via labels. The domain pattern is `<service>.parke.dev`.
 
 ### Exposing a Service via Traefik
 
-Services must join the `traefik_proxy` overlay network and include deploy labels:
+1. Add the Traefik overlay network to the service and to the stack's `networks` section as external.
+2. Add Traefik deploy labels with HTTPS + HTTP redirect routers.
+3. Do NOT publish ports directly — Traefik handles ingress.
+
+Service-level config:
+
+```yaml
+services:
+  my-app:
+    networks:
+      - traefik_proxy
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.<name>.rule=Host(`<name>.parke.dev`)"
+        - "traefik.http.routers.<name>.entrypoints=websecure"
+        - "traefik.http.routers.<name>.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.<name>-http.rule=Host(`<name>.parke.dev`)"
+        - "traefik.http.routers.<name>-http.entrypoints=web"
+        - "traefik.http.routers.<name>-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.<name>.loadbalancer.server.port=<container-port>"
+```
+
+External network definition (required in every stack that uses Traefik):
 
 ```yaml
 networks:
-  - traefik_proxy
-deploy:
-  labels:
-    - "traefik.enable=true"
-    # HTTPS router
-    - "traefik.http.routers.<name>.rule=Host(`<hostname>`)"
-    - "traefik.http.routers.<name>.entrypoints=websecure"
-    - "traefik.http.routers.<name>.tls=true"
-    # HTTP router (redirect to HTTPS)
-    - "traefik.http.routers.<name>-http.rule=Host(`<hostname>`)"
-    - "traefik.http.routers.<name>-http.entrypoints=web"
-    - "traefik.http.routers.<name>-http.middlewares=https-redirect@swarm"
-    # Service port
-    - "traefik.http.services.<name>.loadbalancer.server.port=<port>"
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy
 ```
+
+### Traefik Conventions
 
 - TLS is set per-router (not globally) to allow TCP passthrough for unknown hosts.
 - HTTP->HTTPS redirect is handled per-router via the shared `https-redirect@swarm` middleware defined on the Traefik service.
 - Unknown/unmatched hosts are forwarded via TCP passthrough to the Dokploy fallback server.
+- Router names must be unique across the entire swarm. Use the service name as prefix (e.g. `termix`, `termix-http`).
+- Do not expose ports via `ports:` if the service is only accessed through Traefik.
 
 ## NFS Volume Init Service
 

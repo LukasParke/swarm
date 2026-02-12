@@ -1,0 +1,125 @@
+services:
+  init:
+    image: alpine:latest
+    command: >
+      sh -c "
+        mkdir -p /nfs/mediamanager/config &&
+        mkdir -p /nfs/mediamanager/data &&
+        mkdir -p /nfs/mediamanager/images &&
+        mkdir -p /nfs/mediamanager/postgres &&
+        echo 'Directories created successfully'
+      "
+    volumes:
+      - nfs-root:/nfs
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  mediamanager:
+    image: quay.io/maxdorninger/mediamanager:latest
+    environment:
+      CONFIG_DIR: "/app/config"
+    volumes:
+      - mm-config:/app/config
+      - mm-data:/data
+      - mm-images:/data/images
+    networks:
+      - traefik_proxy
+      - mm-internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.mediamanager.rule=Host(`mediamanager.parke.dev`)"
+        - "traefik.http.routers.mediamanager.entrypoints=websecure"
+        - "traefik.http.routers.mediamanager.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.mediamanager-http.rule=Host(`mediamanager.parke.dev`)"
+        - "traefik.http.routers.mediamanager-http.entrypoints=web"
+        - "traefik.http.routers.mediamanager-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.mediamanager.loadbalancer.server.port=8000"
+
+  db:
+    image: postgres:17
+    volumes:
+      - mm-postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mm-internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+volumes:
+  nfs-root:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
+
+  mm-config:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/mediamanager/config"
+
+  mm-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/mediamanager/data"
+
+  mm-images:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/mediamanager/images"
+
+  mm-postgres:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/mediamanager/postgres"
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy
+  mm-internal:
+    driver: overlay
