@@ -1,0 +1,83 @@
+
+services:
+  init:
+    image: alpine:latest
+    command: >
+      sh -c "
+        mkdir -p /nfs/seerr/config &&
+        echo 'Directories created successfully'
+      "
+    volumes:
+      - nfs-root:/nfs
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    container_name: seerr
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=America/Chicago
+    volumes:
+      - seerr-config:/app/config
+    networks:
+      - traefik_proxy
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/status || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+      retries: 3
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "homepage.name=Seerr"
+        - "homepage.group=Media"
+        - "homepage.icon=overseerr"
+        - "homepage.href=https://seerr.parke.dev"
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.seerr.rule=Host(`seerr.parke.dev`)"
+        - "traefik.http.routers.seerr.entrypoints=websecure"
+        - "traefik.http.routers.seerr.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.seerr-http.rule=Host(`seerr.parke.dev`)"
+        - "traefik.http.routers.seerr-http.entrypoints=web"
+        - "traefik.http.routers.seerr-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.seerr.loadbalancer.server.port=5055"
+
+volumes:
+  nfs-root:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
+
+  seerr-config:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/seerr/config"
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy

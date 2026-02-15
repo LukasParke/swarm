@@ -5,7 +5,7 @@ services:
       - /:/mnt/host:ro
     ports:
       - target: 3001
-        published: 3021
+        published: 3001
         protocol: tcp
         # host mode so each node's IP:3021 shows that node's stats
         mode: host

@@ -71,6 +71,10 @@ services:
         delay: 10s
         order: stop-first
       labels:
+        - "homepage.name=QFlood"
+        - "homepage.group=Media"
+        - "homepage.icon=flood"
+        - "homepage.href=https://qflood.parke.dev"
         - "traefik.enable=true"
         # HTTPS router (Flood UI)
         - "traefik.http.routers.qflood.rule=Host(`qflood.parke.dev`)"

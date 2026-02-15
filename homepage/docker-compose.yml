@@ -1,0 +1,75 @@
+
+services:
+  init:
+    image: alpine:latest
+    command: >
+      sh -c "
+        mkdir -p /nfs/homepage/config &&
+        echo 'Directories created successfully'
+      "
+    volumes:
+      - nfs-root:/nfs
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    networks:
+      - traefik_proxy
+    volumes:
+      - homepage-config:/app/config # Make sure your local config directory exists
+      - /var/run/docker.sock:/var/run/docker.sock:ro # (optional) For docker integrations
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: homepage.parke.dev # required, may need port. See gethomepage.dev/installation/#homepage_allowed_hosts
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.homepage.rule=Host(`homepage.parke.dev`)"
+        - "traefik.http.routers.homepage.entrypoints=websecure"
+        - "traefik.http.routers.homepage.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.homepage-http.rule=Host(`homepage.parke.dev`)"
+        - "traefik.http.routers.homepage-http.entrypoints=web"
+        - "traefik.http.routers.homepage-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+
+volumes:
+  nfs-root:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
+
+  homepage-config:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data/homepage/config"
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy
