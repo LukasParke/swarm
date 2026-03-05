@@ -21,6 +21,9 @@ services:
         protocol: tcp
         mode: host
 
+    secrets:
+      - dashboard_users
+
     volumes:
       # Mount the Docker socket for the Swarm provider
       # This MUST be run from a manager node to access the Swarm API via the socket.
@@ -102,8 +105,8 @@ services:
         - "traefik.http.routers.dashboard-http.middlewares=https-redirect@swarm"
         - "traefik.http.routers.dashboard-http.service=api@internal"
 
-        # Basic‑auth middleware
-        - "traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$apr1$$GFRel7DL$$7w1/3sEC7ly.akaM62pD01"
+        # Basic-auth middleware (credentials in Docker secret)
+        - "traefik.http.middlewares.dashboard-auth.basicauth.usersfile=/run/secrets/dashboard_users"
         - "traefik.http.routers.dashboard.middlewares=dashboard-auth@swarm"
 
         # Service hint
@@ -147,6 +150,11 @@ services:
         - "traefik.http.routers.whoami-http.middlewares=https-redirect@swarm"
         # Expose the whoami port number to Traefik
         - "traefik.http.services.whoami.loadbalancer.server.port=80"
+
+secrets:
+  dashboard_users:
+    external: true
+    name: traefik_dashboard_users
 
 volumes:
   nfs-data:
