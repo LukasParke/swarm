@@ -1,22 +1,4 @@
 services:
-  init:
-    image: alpine:latest
-    command: >
-      sh -c "
-        mkdir -p /nfs/traefik/certs &&
-        mkdir -p /nfs/traefik/dynamic &&
-        echo 'Directories created successfully'
-      "
-    volumes:
-      - nfs-root:/nfs
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 5
-
   traefik:
     image: traefik:v3.6
 
@@ -42,9 +24,19 @@ services:
     volumes:
       # Mount the Docker socket for the Swarm provider
       # This MUST be run from a manager node to access the Swarm API via the socket.
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # Swarm API socket
-      - traefik-certs:/certs:ro
-      - traefik-dynamic:/dynamic:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - type: volume
+        source: nfs-data
+        target: /certs
+        read_only: true
+        volume:
+          subpath: traefik/certs
+      - type: volume
+        source: nfs-data
+        target: /dynamic
+        read_only: true
+        volume:
+          subpath: traefik/dynamic
 
     # Traefik Static configuration via command-line arguments
     command:
@@ -87,7 +79,7 @@ services:
       placement:
         # Pin to a specific node for host-mode port binding
         constraints:
-          - node.hostname == zeus
+          - node.hostname == percy
 
       # Traefik Dynamic configuration via labels
       # In Swarm, labels on the service definition configure Traefik routing for that service.
@@ -157,26 +149,12 @@ services:
         - "traefik.http.services.whoami.loadbalancer.server.port=80"
 
 volumes:
-  nfs-root:
+  nfs-data:
     driver: local
     driver_opts:
       type: nfs
       o: "addr=10.10.10.215,rw,nfsvers=3,soft"
       device: ":/mnt/user/swarm-data"
-
-  traefik-certs:
-    driver: local
-    driver_opts:
-      type: nfs
-      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
-      device: ":/mnt/user/swarm-data/traefik/certs"
-
-  traefik-dynamic:
-    driver: local
-    driver_opts:
-      type: nfs
-      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
-      device: ":/mnt/user/swarm-data/traefik/dynamic"
 
 # Define the overlay network for Swarm
 networks:

@@ -1,22 +1,4 @@
 services:
-  init:
-    image: alpine:latest
-    command: >
-      sh -c "
-        mkdir -p /nfs/qflood/config &&
-        mkdir -p /nfs/qflood/data &&
-        echo 'Directories created successfully'
-      "
-    volumes:
-      - nfs-root:/nfs
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 5
-
   qflood:
     image: ghcr.io/engels74/qflood
     hostname: qflood.internal
@@ -41,7 +23,7 @@ services:
       VPN_PIA_PORT_FORWARD_PERSIST: "false"
       PRIVOXY_ENABLED: "false"
       UNBOUND_ENABLED: "false"
-      # VPN credentials (from .env)
+      # VPN credentials (substituted from GitHub Actions secrets during deploy)
       VPN_PIA_USER: ${VPN_PIA_USER}
       VPN_PIA_PASS: ${VPN_PIA_PASS}
       VPN_PIA_PREFERRED_REGION: ${VPN_PIA_PREFERRED_REGION}
@@ -61,6 +43,9 @@ services:
       - traefik_proxy
     deploy:
       replicas: 1
+      placement:
+        constraints:
+          - node.hostname == Apollo
       restart_policy:
         condition: any
         delay: 5s
@@ -88,26 +73,19 @@ services:
         - "traefik.http.services.qflood.loadbalancer.server.port=3000"
 
 volumes:
-  nfs-root:
-    driver: local
-    driver_opts:
-      type: nfs
-      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
-      device: ":/mnt/user/swarm-data"
-
   qflood-config:
     driver: local
     driver_opts:
-      type: nfs
-      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
-      device: ":/mnt/user/swarm-data/qflood/config"
+      type: none
+      o: bind
+      device: /mnt/user/swarm-data/qflood/config
 
   qflood-data:
     driver: local
     driver_opts:
-      type: nfs
-      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
-      device: ":/mnt/user/swarm-data/qflood/data"
+      type: none
+      o: bind
+      device: /mnt/user/swarm-data/qflood/data
 
 networks:
   traefik_proxy:

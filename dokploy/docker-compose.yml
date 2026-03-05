@@ -1,0 +1,133 @@
+services:
+  dokploy-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dokploy
+      POSTGRES_DB: dokploy
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: volume
+        source: nfs-data
+        target: /var/lib/postgresql/data
+        volume:
+          subpath: dokploy/postgres
+    networks:
+      - dokploy-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d dokploy -U dokploy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname != Apollo
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+  dokploy-redis:
+    image: redis:7
+    volumes:
+      - type: volume
+        source: nfs-data
+        target: /data
+        volume:
+          subpath: dokploy/redis
+    networks:
+      - dokploy-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname != Apollo
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+  dokploy:
+    image: dokploy/dokploy:latest
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: volume
+        source: nfs-data
+        target: /etc/dokploy
+        volume:
+          subpath: dokploy/data
+      - type: volume
+        source: nfs-data
+        target: /root/.docker
+        volume:
+          subpath: dokploy/docker
+    networks:
+      - traefik_proxy
+      - dokploy-network
+      - dokploy-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname != Apollo
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.dokploy.rule=Host(`dokploy.parke.dev`)"
+        - "traefik.http.routers.dokploy.entrypoints=websecure"
+        - "traefik.http.routers.dokploy.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.dokploy-http.rule=Host(`dokploy.parke.dev`)"
+        - "traefik.http.routers.dokploy-http.entrypoints=web"
+        - "traefik.http.routers.dokploy-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.dokploy.loadbalancer.server.port=3000"
+
+secrets:
+  postgres_password:
+    external: true
+    name: dokploy_postgres_password
+
+volumes:
+  nfs-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy
+  dokploy-network:
+    external: true
+    name: dokploy-network
+  dokploy-internal:
+    driver: overlay

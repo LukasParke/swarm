@@ -1,0 +1,65 @@
+services:
+  radarr:
+    image: ghcr.io/hotio/radarr
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "002"
+      TZ: "Etc/UTC"
+      WEBUI_PORTS: "7878/tcp"
+    volumes:
+      - radarr-config:/config
+      - radarr-data:/data
+      - /mnt/user/Plex:/Plex
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == Apollo
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "homepage.name=Radarr"
+        - "homepage.group=Media"
+        - "homepage.icon=radarr"
+        - "homepage.href=https://radarr.parke.dev"
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.radarr.rule=Host(`radarr.parke.dev`)"
+        - "traefik.http.routers.radarr.entrypoints=websecure"
+        - "traefik.http.routers.radarr.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.radarr-http.rule=Host(`radarr.parke.dev`)"
+        - "traefik.http.routers.radarr-http.entrypoints=web"
+        - "traefik.http.routers.radarr-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+
+volumes:
+  radarr-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/user/appdata/radarr/config
+
+  radarr-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/user/appdata/radarr/data
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy

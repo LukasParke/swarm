@@ -1,0 +1,28 @@
+name: Deploy Stacks
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, swarm-deployer]
+    env:
+      VPN_PIA_USER: ${{ secrets.VPN_PIA_USER }}
+      VPN_PIA_PASS: ${{ secrets.VPN_PIA_PASS }}
+      VPN_PIA_PREFERRED_REGION: ${{ secrets.VPN_PIA_PREFERRED_REGION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy all stacks
+        run: |
+          stacks=(traefik portainer homepage prowlarr seerr qflood termix home-assistant dokploy lidarr radarr sonarr dash-dot)
+          for stack in "${stacks[@]}"; do
+            echo "::group::Deploying $stack"
+            docker stack deploy -c "$stack/docker-compose.yml" "$stack" --detach
+            echo "::endgroup::"
+          done
+
+      - name: Verify stacks
+        run: docker stack ls

@@ -55,81 +55,78 @@ networks:
 - Router names must be unique across the entire swarm. Use the service name as prefix (e.g. `termix`, `termix-http`).
 - Do not expose ports via `ports:` if the service is only accessed through Traefik.
 
-## NFS Volume Init Service
+## NFS Volumes via Subpath
 
-Every stack that uses NFS volumes must include an `init` service that creates required directories before other services start.
-
-```yaml
-init:
-  image: alpine:latest
-  command: >
-    sh -c "
-      mkdir -p /nfs/<stack-name>/subdir1 &&
-      mkdir -p /nfs/<stack-name>/subdir2 &&
-      echo 'Directories created successfully'
-    "
-  volumes:
-    - nfs-root:/nfs
-  deploy:
-    mode: replicated
-    replicas: 1
-    restart_policy:
-      condition: on-failure
-      delay: 5s
-      max_attempts: 5
-```
-
-- Mount the NFS root (`:/mnt/user/swarm-data`) as `nfs-root` and create all subdirectories under it.
-- Use `restart_policy: on-failure` with a limited `max_attempts` so it retries if NFS isn't ready, but stops after success.
-- The init service acts as a safety net for future redeployments when the directories already exist.
-
-### Important: First-Time Deployment
-
-NFS subdirectory volumes must point to paths that **already exist on the NAS** before the stack is deployed. Docker mounts NFS volumes at volume creation time, before any container starts. If the path doesn't exist, the volume enters a failed state and won't retry the mount — only the container restarts, not the volume.
-
-**Before the first deployment of any new stack**, create the required directories on the NAS (`10.10.10.215`):
-
-```bash
-ssh nas 'mkdir -p /mnt/user/swarm-data/<stack-name>/subdir1 /mnt/user/swarm-data/<stack-name>/subdir2'
-```
-
-If a deployment fails due to missing directories:
-
-1. Remove the stack: `docker stack rm <stack-name>`
-2. Wait for cleanup: `sleep 10`
-3. Remove failed volumes: `docker volume rm <stack-name>_<volume-name>` for each volume
-4. Create the directories on the NAS
-5. Redeploy
-
-## NFS Volume Definition
-
-The NFS root volume should always use these settings:
+Stacks running on Percy or Hercules (Docker 28+) use a single `nfs-data` volume pointing to the NFS root, then `volume.subpath` to mount subdirectories.
 
 ```yaml
-nfs-root:
-  driver: local
-  driver_opts:
-    type: nfs
-    o: "addr=10.10.10.215,rw,nfsvers=3,soft"
-    device: ":/mnt/user/swarm-data"
+services:
+  my-app:
+    volumes:
+      - type: volume
+        source: nfs-data
+        target: /app/data
+        volume:
+          subpath: <stack-name>/data
+
+volumes:
+  nfs-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
+      device: ":/mnt/user/swarm-data"
 ```
 
-## Environment Variables
+- The NFS root always exists, so the volume mount never enters a failed state.
+- Requires **Docker Engine 28+** (subpath was broken in Swarm mode before 28).
 
-- Each stack should have a `.env` file alongside its compose YAML for secrets and sensitive configuration only.
-- Hardcode non-sensitive values (hostnames, ports, paths, feature flags) directly in the compose file.
-- Reference secret variables in the compose file using `${VARIABLE}` syntax.
+## Apollo Node (Unraid NAS)
 
-## Host-Mode Ports
+Apollo runs Docker 27.5.1 (Unraid) and cannot use volume subpath. Stacks on Apollo (qflood, lidarr, radarr, sonarr) use local bind mount volumes:
 
-Services using `mode: host` ports must include a placement constraint to pin them to a specific node by hostname. Hardcode the hostname directly in the compose file:
+```yaml
+volumes:
+  app-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/user/swarm-data/<stack>/config
+```
+
+The *arr apps use `/mnt/user/appdata/<app>/` paths. QFlood uses `/mnt/user/swarm-data/qflood/` paths. Both are local to the Unraid NAS.
+
+**All stacks using NFS subpath must exclude Apollo:**
 
 ```yaml
 deploy:
   placement:
     constraints:
-      - node.hostname == my-node-hostname
+      - node.hostname != Apollo
 ```
+
+All three nodes are managers, so `node.role == manager` does NOT exclude Apollo. Always use `node.hostname != Apollo` instead.
+
+## GitOps: GitHub Actions
+
+A self-hosted GitHub Actions runner (`github-runner/`) runs inside the swarm as the bootstrap stack. It connects outbound to GitHub — no inbound ports or SSH required.
+
+- **Workflow:** `.github/workflows/deploy.yml` triggers on push to `main` or manual dispatch
+- **Runner:** Uses label `swarm-deployer`, constrained to `node.hostname != Apollo`
+- **Secrets:** VPN credentials stored as GitHub Actions secrets, exported as env vars during deploy
+- **Adding a stack:** Create the directory + compose file, add the stack name to the `stacks` array in the workflow, push to `main`
+- **The runner does not manage itself** — `github-runner/` is deployed manually (bootstrap)
+
+## Environment Variables
+
+- Secrets use `${VARIABLE}` syntax in compose files, substituted from GitHub Actions secrets during deploy
+- Hardcode non-sensitive values (hostnames, ports, paths, feature flags) directly in the compose file
+- `.env` files are gitignored and only used for local/manual deploys
+
+## Host-Mode Ports
+
+Services using `mode: host` ports must include a placement constraint to pin them to a specific node by hostname.
 
 ## Service Deploy Defaults
 

@@ -1,0 +1,53 @@
+services:
+
+  home-assistant:
+    image: ghcr.io/home-assistant/home-assistant:latest
+    volumes:
+      - ha-config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == percy
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "homepage.name=Home Assistant"
+        - "homepage.group=Networking"
+        - "homepage.icon=home-assistant"
+        - "homepage.href=https://homeassistant.parke.dev"
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.homeassistant.rule=Host(`homeassistant.parke.dev`)"
+        - "traefik.http.routers.homeassistant.entrypoints=websecure"
+        - "traefik.http.routers.homeassistant.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.homeassistant-http.rule=Host(`homeassistant.parke.dev`)"
+        - "traefik.http.routers.homeassistant-http.entrypoints=web"
+        - "traefik.http.routers.homeassistant-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.homeassistant.loadbalancer.server.port=8123"
+
+volumes:
+  ha-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/homeassistant
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy

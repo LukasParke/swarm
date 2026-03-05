@@ -1,0 +1,65 @@
+services:
+  lidarr:
+    image: ghcr.io/hotio/lidarr
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "002"
+      TZ: "Etc/UTC"
+      WEBUI_PORTS: "8686/tcp"
+    volumes:
+      - lidarr-config:/config
+      - lidarr-data:/data
+      - /mnt/user/Plex:/Plex
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == Apollo
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 0
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      labels:
+        - "homepage.name=Lidarr"
+        - "homepage.group=Media"
+        - "homepage.icon=lidarr"
+        - "homepage.href=https://lidarr.parke.dev"
+        - "traefik.enable=true"
+        # HTTPS router
+        - "traefik.http.routers.lidarr.rule=Host(`lidarr.parke.dev`)"
+        - "traefik.http.routers.lidarr.entrypoints=websecure"
+        - "traefik.http.routers.lidarr.tls=true"
+        # HTTP router (redirect to HTTPS)
+        - "traefik.http.routers.lidarr-http.rule=Host(`lidarr.parke.dev`)"
+        - "traefik.http.routers.lidarr-http.entrypoints=web"
+        - "traefik.http.routers.lidarr-http.middlewares=https-redirect@swarm"
+        # Service port
+        - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+
+volumes:
+  lidarr-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/user/appdata/lidarr/config
+
+  lidarr-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/user/appdata/lidarr/data
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_traefik_proxy
