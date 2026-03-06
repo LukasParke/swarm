@@ -15,13 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Ensure external networks exist
-        run: |
-          docker network create --driver overlay --attachable dokploy-network 2>/dev/null || true
-
       - name: Deploy all stacks
         run: |
-          stacks=(traefik portainer homepage prowlarr seerr qflood termix home-assistant dokploy lidarr radarr sonarr dash-dot)
+          stacks=(traefik portainer homepage prowlarr seerr qflood termix home-assistant lidarr radarr sonarr dash-dot)
           for stack in "${stacks[@]}"; do
             echo "::group::Deploying $stack"
             docker stack deploy -c "$stack/docker-compose.yml" "$stack" --detach
