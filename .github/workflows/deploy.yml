@@ -15,6 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Ensure external networks exist
+        run: |
+          docker network create --driver overlay --attachable dokploy-network 2>/dev/null || true
+
       - name: Deploy all stacks
         run: |
           stacks=(traefik portainer homepage prowlarr seerr qflood termix home-assistant dokploy lidarr radarr sonarr dash-dot)
