@@ -7,11 +7,7 @@ services:
       - "9000:9000"
       - "8000:8000"
     volumes:
-      - type: volume
-        source: nfs-data
-        target: /data
-        volume:
-          subpath: portainer/data
+      - portainer-data:/data
     networks:
       - traefik_proxy
       - agent_network
@@ -20,7 +16,7 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.hostname != Apollo
+          - node.hostname == Apollo
       restart_policy:
         condition: any
         delay: 5s
@@ -65,12 +61,12 @@ services:
         order: stop-first
 
 volumes:
-  nfs-data:
+  portainer-data:
     driver: local
     driver_opts:
-      type: nfs
-      o: "addr=10.10.10.215,rw,nfsvers=3,soft"
-      device: ":/mnt/user/swarm-data"
+      type: none
+      o: bind
+      device: /mnt/user/swarm-data/portainer/data
 
 networks:
   traefik_proxy:
