@@ -49,9 +49,8 @@ networks:
 
 ### Traefik Conventions
 
-- TLS is set per-router (not globally) to allow TCP passthrough for unknown hosts.
+- TLS is set per-router (not globally).
 - HTTP->HTTPS redirect is handled per-router via the shared `https-redirect@swarm` middleware defined on the Traefik service.
-- Unknown/unmatched hosts are forwarded via TCP passthrough to the Dokploy fallback server.
 - Router names must be unique across the entire swarm. Use the service name as prefix (e.g. `termix`, `termix-http`).
 - Do not expose ports via `ports:` if the service is only accessed through Traefik.
 

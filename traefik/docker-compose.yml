@@ -46,7 +46,7 @@ services:
       # HTTP EntryPoint (no global redirect -- handled per-router via middleware)
       - "--entrypoints.web.address=:80"
 
-      # HTTPS EntryPoint (no global TLS -- set per-router to allow TCP passthrough)
+      # HTTPS EntryPoint
       - "--entrypoints.websecure.address=:443"
 
       # Dynamic configuration directory (TLS certs, catch-all routers, etc.)

@@ -11,7 +11,6 @@ Docker Swarm stack definitions for a home infrastructure. Each subdirectory is a
 - **Reverse proxy:** Traefik v3 (defined in `traefik/`), host-mode ports 80/443 pinned to `percy`
 - **Domain pattern:** `<service>.parke.dev` — all services routed through Traefik via deploy labels
 - **NAS storage:** Apollo (Unraid) at `10.10.10.215`, NFS root `/mnt/user/swarm-data`
-- **Fallback routing:** Unmatched hosts forwarded via TCP passthrough to Dokploy at `10.10.10.54` (configured in `traefik/dynamic/catchall.yaml`)
 - **Dashboard:** Homepage service discovers other services via `homepage.*` deploy labels
 - **GitOps:** GitHub Actions workflow (`.github/workflows/deploy.yml`) runs on a self-hosted runner inside the swarm
 
@@ -65,7 +64,7 @@ A **self-hosted GitHub Actions runner** (`github-runner/`) runs inside the swarm
 **How it works:**
 1. Push a commit to `main`
 2. GitHub triggers `.github/workflows/deploy.yml`
-3. The self-hosted runner (on percy or hercules) runs `docker stack deploy` for all 13 stacks
+3. The self-hosted runner (on percy or hercules) runs `docker stack deploy` for all stacks
 4. Docker Swarm handles rolling updates — deploys are idempotent (no-op if nothing changed)
 5. Can also be triggered manually via `workflow_dispatch` in the GitHub Actions UI
 

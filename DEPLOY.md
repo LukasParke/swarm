@@ -7,7 +7,7 @@ Steps to deploy this swarm infrastructure with GitHub Actions GitOps.
 | Node | Role | Docker | RAM | Services |
 |------|------|--------|-----|----------|
 | **percy** | Manager (leader) | 28+ | 128GB | Traefik (host-mode 80/443), Home Assistant, GitHub Actions runner |
-| **hercules** | Manager | 28+ | 128GB | NFS-based stacks (prowlarr, seerr, termix, portainer, homepage, dokploy) |
+| **hercules** | Manager | 28+ | 128GB | NFS-based stacks (prowlarr, seerr, termix, homepage) |
 | **Apollo** | Manager (Unraid NAS) | 27.5.1 | 64GB | qflood, lidarr, radarr, sonarr (all local bind mounts) |
 
 All nodes are managers (3-node raft quorum — survives one node failure). All on 10G internal LAN.
@@ -42,23 +42,7 @@ docker network create --driver overlay --attachable traefik_traefik_proxy 2>/dev
 
 ### 3. Ensure Docker secrets exist
 
-```bash
-# Dokploy postgres password (skip if not deploying dokploy yet)
-docker secret ls | grep dokploy_postgres_password
-# If missing:
-# echo "your-password" | docker secret create dokploy_postgres_password -
-```
-
-### 4. Ensure external networks exist
-
-```bash
-# Dokploy network (skip if not deploying dokploy yet)
-docker network ls | grep dokploy-network
-# If missing:
-# docker network create --driver overlay dokploy-network
-```
-
-### 5. Verify directories on Apollo
+### 4. Verify directories on Apollo
 
 ```bash
 # QFlood
@@ -72,13 +56,13 @@ ssh apollo 'ls -d /mnt/user/appdata/{lidarr,radarr,sonarr}/{config,data}'
 # ssh apollo 'mkdir -p /mnt/user/appdata/{lidarr,radarr,sonarr}/{config,data}'
 ```
 
-### 6. Verify NFS directories for subpath stacks
+### 5. Verify NFS directories for subpath stacks
 
 ```bash
-ssh apollo 'ls -d /mnt/user/swarm-data/{traefik,portainer,homepage,prowlarr,seerr,termix,dokploy}'
+ssh apollo 'ls -d /mnt/user/swarm-data/{traefik,homepage,prowlarr,seerr,termix}'
 ```
 
-### 7. Ensure DNS is correct
+### 6. Ensure DNS is correct
 
 `*.parke.dev` must resolve to **percy's** IP address.
 
