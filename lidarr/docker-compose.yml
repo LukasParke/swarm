@@ -11,6 +11,7 @@ services:
       - lidarr-config:/config
       - lidarr-data:/data
       - /mnt/user/Plex:/Plex
+      - /mnt/user/swarm-data/qflood/config/downloads:/downloads
     networks:
       - traefik_proxy
     deploy:
