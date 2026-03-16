@@ -9,9 +9,8 @@ services:
       WEBUI_PORTS: "8686/tcp"
     volumes:
       - lidarr-config:/config
-      - lidarr-data:/data
+      - /mnt/user/swarm-data/qflood/data/:/data
       - /mnt/user/Plex:/Plex
-      - /mnt/user/swarm-data/qflood/config/downloads:/downloads
     networks:
       - traefik_proxy
     deploy:
@@ -52,13 +51,6 @@ volumes:
       type: none
       o: bind
       device: /mnt/user/appdata/lidarr/config
-
-  lidarr-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/user/appdata/lidarr/data
 
 networks:
   traefik_proxy:

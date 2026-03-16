@@ -9,9 +9,8 @@ services:
       WEBUI_PORTS: "8989/tcp"
     volumes:
       - sonarr-config:/config
-      - sonarr-data:/data
+      - /mnt/user/swarm-data/qflood/data/:/data
       - /mnt/user/Plex:/Plex
-      - /mnt/user/swarm-data/qflood/config/downloads:/downloads
     networks:
       - traefik_proxy
     deploy:
@@ -52,13 +51,6 @@ volumes:
       type: none
       o: bind
       device: /mnt/user/appdata/sonarr/config
-
-  sonarr-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/user/appdata/sonarr/data
 
 networks:
   traefik_proxy:

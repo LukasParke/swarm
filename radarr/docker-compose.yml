@@ -9,9 +9,8 @@ services:
       WEBUI_PORTS: "7878/tcp"
     volumes:
       - radarr-config:/config
-      - radarr-data:/data
+      - /mnt/user/swarm-data/qflood/data/:/data
       - /mnt/user/Plex:/Plex
-      - /mnt/user/swarm-data/qflood/config/downloads:/downloads
     networks:
       - traefik_proxy
     deploy:
@@ -52,13 +51,6 @@ volumes:
       type: none
       o: bind
       device: /mnt/user/appdata/radarr/config
-
-  radarr-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/user/appdata/radarr/data
 
 networks:
   traefik_proxy:
