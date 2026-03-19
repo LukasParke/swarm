@@ -17,7 +17,7 @@ jobs:
 
       - name: Deploy all stacks
         run: |
-          stacks=(traefik homepage prowlarr seerr qflood termix home-assistant lidarr radarr sonarr dash-dot)
+          stacks=(traefik homepage prowlarr seerr flood termix home-assistant lidarr radarr sonarr dash-dot)
           for stack in "${stacks[@]}"; do
             echo "::group::Deploying $stack"
             docker stack deploy -c "$stack/docker-compose.yml" "$stack" --detach
