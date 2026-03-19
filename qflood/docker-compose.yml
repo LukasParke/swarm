@@ -1,7 +1,7 @@
 services:
-  qflood:
+  flood:
     image: ghcr.io/hotio/rflood
-    hostname: qflood.internal
+    hostname: flood.internal
     cap_add:
       - NET_ADMIN
     environment:
@@ -28,8 +28,8 @@ services:
       VPN_PIA_PASS: ${VPN_PIA_PASS}
       VPN_PIA_PREFERRED_REGION: ${VPN_PIA_PREFERRED_REGION}
     volumes:
-      - qflood-config:/config
-      - qflood-data:/data
+      - flood-config:/config
+      - flood-data:/data
     ports:
       - target: 8080
         published: 8080
@@ -56,36 +56,36 @@ services:
         delay: 10s
         order: stop-first
       labels:
-        - "homepage.name=QFlood"
+        - "homepage.name=flood"
         - "homepage.group=Media"
         - "homepage.icon=flood"
-        - "homepage.href=https://qflood.parke.dev"
+        - "homepage.href=https://flood.parke.dev"
         - "traefik.enable=true"
         # HTTPS router (Flood UI)
-        - "traefik.http.routers.qflood.rule=Host(`qflood.parke.dev`)"
-        - "traefik.http.routers.qflood.entrypoints=websecure"
-        - "traefik.http.routers.qflood.tls=true"
+        - "traefik.http.routers.flood.rule=Host(`flood.parke.dev`)"
+        - "traefik.http.routers.flood.entrypoints=websecure"
+        - "traefik.http.routers.flood.tls=true"
         # HTTP router (redirect to HTTPS)
-        - "traefik.http.routers.qflood-http.rule=Host(`qflood.parke.dev`)"
-        - "traefik.http.routers.qflood-http.entrypoints=web"
-        - "traefik.http.routers.qflood-http.middlewares=https-redirect@swarm"
+        - "traefik.http.routers.flood-http.rule=Host(`flood.parke.dev`)"
+        - "traefik.http.routers.flood-http.entrypoints=web"
+        - "traefik.http.routers.flood-http.middlewares=https-redirect@swarm"
         # Service port (Flood UI)
-        - "traefik.http.services.qflood.loadbalancer.server.port=3000"
+        - "traefik.http.services.flood.loadbalancer.server.port=3000"
 
 volumes:
-  qflood-config:
+  flood-config:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/user/swarm-data/qflood/config
+      device: /mnt/user/swarm-data/flood/config
 
-  qflood-data:
+  flood-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/user/swarm-data/qflood/data
+      device: /mnt/user/swarm-data/flood/data
 
 networks:
   traefik_proxy:
