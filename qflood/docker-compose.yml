@@ -1,6 +1,6 @@
 services:
   qflood:
-    image: ghcr.io/engels74/qflood
+    image: ghcr.io/engels74/qflood:nightly
     hostname: qflood.internal
     cap_add:
       - NET_ADMIN
